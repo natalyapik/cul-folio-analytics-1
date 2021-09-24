@@ -37,8 +37,8 @@
 WITH parameters AS (
     SELECT
         /* Choose a start and end date for the request period */
-        '2000-01-01'::date AS start_date,
-        '2022-01-01'::date AS end_date,
+        '2021-07-01'::date AS start_date,
+        '2022-06-30'::date AS end_date,
         /* Fill in a location name, or leave blank for all locations */
         ''::varchar AS items_permanent_location_filter, --Olin, ILR, Africana, etc.
         /* Fill in 1-4 request statuses, or leave all blank for all statuses */
@@ -66,6 +66,7 @@ SELECT
         (SELECT end_date::varchar FROM parameters) AS date_range,
     cr.id AS request_id,
     cr.request_date,
+    json_extract_path_text(cr.data, 'metadata','updatedDate')::date AS request_updated_date,
     cr.request_type,
     cr.status AS request_status,
     --cr.pickup_service_point_id,

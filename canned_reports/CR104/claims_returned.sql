@@ -1,26 +1,33 @@
-/*FIELDS INCLUDED IN SAMPLE:
-
-A report of claimed return loans with helpful details from item, holdings, and instance
+/*
+PURPOSE 
+This report shows a list of items that patrons claim they have returned, but are not showing as checked in by the system 
+(where the item status is 'claimed returned'). Patron information is also included. 
  
-FILTERS: loan item status, loan date range, location name (permanent, temporary, effective)
+MAIN TABLES INCLUDED
+loans_items (derived table), user_users, circulation_loans, inventory_instances, holdings_ext (derived table), loans_renamwal_count (derived table)
 
 AGGREGATION: total historical loan sum and renewal sum included (not date-range bound)
+
+
+FILTERS FOR USERS TO SELECT
+loan item status, loan date range, location name (permanent, temporary, effective)
+
+
  */
 WITH parameters AS (
     SELECT
-        /* Search loans with this status */
-        --change status to Claimed returned, which does not currently exist in the test data.
-        'Checked out'::varchar AS item_status_filter, --Claimed returned
+        /* Search loans with this status, can use any status and not just claimed returned */
+         ''::varchar AS item_status_filter, --Claimed returned
         /* Choose a start and end date for the loans period */
-        '2000-01-01'::date AS start_date,
-        '2022-01-01'::date AS end_date,
+        '2021-07-01'::date AS start_date,
+        '2022-06-30'::date AS end_date,
         /* Fill in a location name, OR leave blank for all locations */
-        ''::varchar AS current_item_permanent_location_filter, --Olin, ILR, Africana, etc.
-        ''::varchar AS current_item_temporary_location_filter, --Olin, ILR, Africana, etc.
-        ''::varchar AS current_item_effective_location_filter, --Olin, ILR, Africana, etc.
+        ''::varchar AS current_item_permanent_location_filter, --Examples: Olin, ILR, Africana, etc.
+        ''::varchar AS current_item_temporary_location_filter, --Examples: Olin, ILR, Africana, etc.
+        ''::varchar AS current_item_effective_location_filter, --Examples: Olin, ILR, Africana, etc.
         ''::varchar AS current_item_permanent_location_institution_filter, -- Cornell University
-        ''::varchar AS current_item_permanent_location_campus_filter, -- Ithaca, etc.
-        ''::varchar AS current_item_permanent_location_library_filter -- Nestle Library, Library Annex, etc.
+        ''::varchar AS current_item_permanent_location_campus_filter, -- Examples: Ithaca
+        ''::varchar AS current_item_permanent_location_library_filter -- Examples: Nestle Library, Library Annex, etc.
 ),
 -- CTEs
 items_with_notes AS (
@@ -65,10 +72,11 @@ SELECT
     li.chronology,
     li.copy_number,
     li.enumeration,
-    li.item_level_call_number,
     li.number_of_pieces,
     ie.volume,
-    ie.call_number,
+  --ie.call_number,
+    json_extract_path_text(iit.data, 'effectiveCallNumberComponents', 'callNumber') AS call_number,
+    li.item_level_call_number,
     --he.holdings_id,
     --he.instance_id,
     he.permanent_location_name,
@@ -93,6 +101,7 @@ FROM
     LEFT JOIN items_with_notes AS nn ON li.item_id = nn.item_id
     LEFT JOIN folio_reporting.holdings_ext AS he ON ie.holdings_record_id = he.holdings_id
     LEFT JOIN public.inventory_instances AS ii ON he.instance_id = ii.id
+    LEFT JOIN public.inventory_items AS iit ON li.item_id=iit.id
     LEFT JOIN instances_with_publication_dates AS pd ON he.instance_id = pd.instance_id
     LEFT JOIN folio_reporting.instance_publication AS ip ON he.instance_id = ip.instance_id
     LEFT JOIN folio_reporting.loans_renewal_count AS lrc ON li.item_id = lrc.item_id
