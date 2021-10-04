@@ -2,57 +2,75 @@
 
 WITH parameters AS (
     SELECT
-        'serial' ::VARCHAR AS mode_of_issuance_filter, -- 'serial'
+        '' ::VARCHAR AS mode_of_issuance_filter, -- 'serial'
         '' ::VARCHAR AS identifier_filter, -- 'OCLC'
         '' ::VARCHAR AS status_name_filter -- 'Cataloged'
 ),
 oclc_no AS (
     SELECT
-        ii2.instance_id,
+        ii2.instance_id AS instance_id,
         ii2.identifier_type_name AS id_type,
         ii2.identifier AS oclc_number2
     FROM 
         folio_reporting.instance_identifiers AS ii2
-         WHERE   
-       ii2.identifier_type_name = 'OCLC'
+    WHERE ii2.identifier_type_name = 'OCLC'
 ),
 gov_doc AS (SELECT
     sm.instance_hrid,
     CASE 
         WHEN substring(sm.content, 18, 1) IN ('u') 
              AND substring(sm.content, 29, 1) IN ('f') 
-        THEN '1'
-        ELSE '0' END AS gov_doc_indicator
-FROM
+             THEN '1'
+             ELSE '0' END AS gov_doc
+    FROM
     srs_marctab sm
-WHERE
-    sm.field = '008')
+    WHERE
+    sm.field = '008'
+),
+rec_type AS (SELECT 
+    sm.instance_hrid,
+    sm.instance_id,
+    substring(sm.content, 7, 2) AS "type"
+    FROM 
+    srs_marctab sm
+    WHERE (sm.field = '000'
+    AND substring(sm.content, 7, 2) IN ('as'))
+),
+location_filtering AS (SELECT 
+    hol.holdings_hrid AS holdings_hrid,
+    hol.instance_id AS instance_id
+    FROM folio_reporting.holdings_ext AS hol
+    WHERE (hol.permanent_location_name 
+    NOT in ('serv,remo','Borrow Direct','LTS Review Shelves'))
+)
 SELECT 
     DISTINCT frie.title,
     hol.permanent_location_name,
     frie.instance_hrid,
-    frie.mode_of_issuance_name AS instance_mode_of_issuance,
+    rectype."type",
     iht.name AS holdings_type,
-    oclcno.oclc_number2,
-    ii3.identifier AS issn3,
-    govdoc.gov_doc_indicator
+    frie.mode_of_issuance_name AS mode_type,
+      CASE 
+        WHEN oclcno.oclc_number2 LIKE '(OCoLC)ocm%' THEN SUBSTRING(oclcno.oclc_number2, 11)
+        WHEN oclcno.oclc_number2 LIKE '(OCoLC)ocn%' THEN SUBSTRING(oclcno.oclc_number2, 11)
+        WHEN oclcno.oclc_number2 LIKE '(OCoLC)%' THEN SUBSTRING(oclcno.oclc_number2, 8)
+        ELSE oclcno.oclc_number2 END AS oclc_no,
+        ii3.identifier AS issn,
+        govdoc.gov_doc
 FROM 
-    oclc_no AS oclcno 
-LEFT JOIN folio_reporting.instance_ext AS frie ON frie.instance_id = oclcno.instance_id
+    folio_reporting.instance_ext AS frie
+    right JOIN rec_type AS rectype ON frie.instance_id = rectype.instance_id
+    LEFT JOIN oclc_no AS oclcno ON frie.instance_id = oclcno.instance_id
+    LEFT JOIN gov_doc AS govdoc ON frie.instance_hrid = govdoc.instance_hrid
+    LEFT JOIN location_filtering AS loc_filt ON frie.instance_id = loc_filt.instance_id
     LEFT JOIN folio_reporting.holdings_ext AS hol ON frie.instance_id = hol.instance_id
-    LEFT JOIN folio_reporting.instance_identifiers AS instind ON frie.instance_id = instind.instance_id 
+    --LEFT JOIN folio_reporting.instance_identifiers AS instind ON frie.instance_id = instind.instance_id 
     LEFT JOIN folio_reporting.instance_formats AS if2 ON frie.instance_id = if2.instance_id 
     LEFT JOIN inventory_holdings_types AS iht ON hol.type_id = iht.id 
-    LEFT JOIN srs_marctab AS sm ON hol.instance_id = sm.instance_id
     LEFT JOIN folio_reporting.instance_identifiers AS ii3 ON oclcno.instance_id = ii3.instance_id
-    LEFT JOIN gov_doc AS govdoc ON frie.instance_hrid = govdoc.instance_hrid
-WHERE
-    (frie.mode_of_issuance_name = (SELECT mode_of_issuance_filter FROM parameters) OR (SELECT mode_of_issuance_filter FROM parameters) = '')
-AND 
-   (iht.name = 'Serial')
-AND ii3.identifier_type_name = 'ISSN' 
-AND (hol.permanent_location_name NOT in ('serv,remo','Borrow Direct'))
-    AND (hol.call_number NOT IN ('%On Order%','%In Process%','%Available for the library to purchase%','%Film%','%fiche%'))
-    AND  
-    (sm.field = '245' AND sm.sf != 'h')
-AND frie.instance_hrid between  '331814'and '350000';
+WHERE (iht.name = 'Serial' OR frie.mode_of_issuance_name LIKE 'Serial')
+AND (ii3.identifier_type_name = 'ISSN')
+---AND (hol.permanent_location_name NOT in ('serv,remo','Borrow Direct','LTS Review Shelves'))
+AND (hol.call_number NOT IN ('%On Order%','%In Process%','%Available for the library to purchase%','%Film%','%fiche%'))
+--AND frie.instance_hrid like  '16088__'
+;
